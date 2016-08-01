@@ -92,26 +92,44 @@ class CurlHttpProxyProvider implements ProxyProviderInterface, \TYPO3\CMS\Core\S
 				}
 			}
 
-			$active = NULL;
-			do {
-				$multiExecResult = curl_multi_exec($curlQueueHandler, $active);
-			} while ($multiExecResult == CURLM_CALL_MULTI_PERFORM);
-
-			while ($active && $multiExecResult == CURLM_OK) {
-				if (curl_multi_select($curlQueueHandler) != -1) {
-					do {
-						$multiExecResult = curl_multi_exec($curlQueueHandler, $active);
-					} while ($multiExecResult == CURLM_CALL_MULTI_PERFORM);
-				}
-			}
-
-			foreach ($curlHandles as $curlHandle) {
-				curl_multi_remove_handle($curlQueueHandler, $curlHandle);
-			}
-
-			curl_multi_close($curlQueueHandler);
-			// and empty the URL queue again
-			$this->queue = array();
+		// run curl on a different process to prevent it from blocking the typo3 backend
+		$pid = -1;
+	            if (extension_loaded("pcntl")) {
+	                $pid = pcntl_fork();
+	            } else {
+	                $this->getLogObject()->info(
+	                    'pcntl extension not loaded'
+	                );
+	            }
+	
+	            if ($pid == -1) {
+	                $this->getLogObject()->error(
+	                    'can not fork'
+	                );
+	            }
+	
+	            if ($pid || $pid == -1) {
+	                $active = NULL;
+	                do {
+	                    $multiExecResult = curl_multi_exec($curlQueueHandler, $active);
+	                } while ($multiExecResult == CURLM_CALL_MULTI_PERFORM);
+	
+	                while ($active && $multiExecResult == CURLM_OK) {
+	                    if (curl_multi_select($curlQueueHandler) != -1) {
+	                        do {
+	                            $multiExecResult = curl_multi_exec($curlQueueHandler, $active);
+	                        } while ($multiExecResult == CURLM_CALL_MULTI_PERFORM);
+	                    }
+	                }
+	
+	                foreach ($curlHandles as $curlHandle) {
+	                    curl_multi_remove_handle($curlQueueHandler, $curlHandle);
+	                }
+	
+	                curl_multi_close($curlQueueHandler);
+	            }
+		// and empty the URL queue again
+		$this->queue = array();
 		}
 	}
 
